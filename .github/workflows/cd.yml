@@ -15,13 +15,10 @@ jobs:
     runs-on: self-hosted
     # Only run if CI was successful or manually triggered
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    
+
     defaults:
       run:
-        shell: powershell
-    
-    env:
-      PATH: ${{ env.PATH }};C:\Program Files\Kubernetes\Minikube
+        shell: wsl
 
     steps:
       # ----------------------------------------------------
@@ -43,8 +40,8 @@ jobs:
       # ----------------------------------------------------
       - name: Update Deployment Image
         run: |
-          (Get-Content k8s/deployment.yaml) -replace 'image: .*simple-api:.*', 'image: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}' | Set-Content k8s/deployment.yaml
-          Get-Content k8s/deployment.yaml | Select-String "image:"
+          sed -i "s|image: .*simple-api:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}|g" k8s/deployment.yaml
+          cat k8s/deployment.yaml | grep image:
 
       # ----------------------------------------------------
       # 4. Deploy Application to Kubernetes
@@ -72,13 +69,13 @@ jobs:
       # ----------------------------------------------------
       - name: Verify Deployment
         run: |
-          Write-Output "=== Deployment Status ==="
+          echo "=== Deployment Status ==="
           kubectl get deployment -n simple-api
-          Write-Output ""
-          Write-Output "=== Pod Status ==="
+          echo ""
+          echo "=== Pod Status ==="
           kubectl get pods -n simple-api
-          Write-Output ""
-          Write-Output "=== Service Status ==="
+          echo ""
+          echo "=== Service Status ==="
           kubectl get svc -n simple-api
 
       # ----------------------------------------------------
@@ -87,103 +84,98 @@ jobs:
       - name: Run Smoke Test
         run: |
           # Get service URL using minikube
-          $SERVICE_URL = minikube service simple-api-service -n simple-api --url
-          Write-Output "Service URL: $SERVICE_URL"
+          SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
+          echo "Service URL: $SERVICE_URL"
 
           # Test the main API endpoint
-          Write-Output "Testing API endpoint..."
-          $RESPONSE = Invoke-WebRequest -Uri "$SERVICE_URL/hello" -UseBasicParsing | Select-Object -ExpandProperty Content
-          if ($RESPONSE -notmatch "Hello World") {
-            Write-Output "API test failed. Expected 'Hello World' in response, got: $RESPONSE"
+          echo "Testing API endpoint..."
+          RESPONSE=$(curl -s "$SERVICE_URL/hello")
+          if ! echo "$RESPONSE" | grep -q "Hello World"; then
+            echo "API test failed. Expected 'Hello World' in response, got: $RESPONSE"
             exit 1
-          }
+          fi
 
           # Test actuator health endpoint
-          Write-Output "Testing health endpoint..."
-          $HEALTH_RESPONSE = Invoke-RestMethod -Uri "$SERVICE_URL/actuator/health"
-          if ($HEALTH_RESPONSE.status -ne "UP") {
-            Write-Output "Health check failed. Status: $($HEALTH_RESPONSE.status)"
+          echo "Testing health endpoint..."
+          HEALTH_RESPONSE=$(curl -s "$SERVICE_URL/actuator/health")
+          if ! echo "$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
+            echo "Health check failed. Response: $HEALTH_RESPONSE"
             exit 1
-          }
+          fi
 
           # Check if pods are running
-          $PODS_STATUS = kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
-          $READY_PODS = ($PODS_STATUS -split ' ' | Where-Object { $_ -eq "True" }).Count
-          if ($READY_PODS -lt 1) {
-            Write-Output "ERROR: No pods are ready!"
+          PODS_STATUS=$(kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}')
+          READY_COUNT=$(echo "$PODS_STATUS" | grep -o "True" | wc -l)
+          if [ "$READY_COUNT" -lt 1 ]; then
+            echo "ERROR: No pods are ready!"
             kubectl describe pods -n simple-api
             kubectl logs -l app=simple-api -n simple-api --tail=50
             exit 1
-          }
-          Write-Output "SUCCESS: $READY_PODS pod(s) are ready and running"
+          fi
+          echo "SUCCESS: $READY_COUNT pod(s) are ready and running"
 
       # ----------------------------------------------------
       # 8. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
       - name: Perform Basic Security Assessment
         run: |
-          Write-Output "Performing basic security assessment..."
+          echo "Performing basic security assessment..."
 
           # Get service URL using minikube
-          $SERVICE_URL = minikube service simple-api-service -n simple-api --url
+          SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
 
           # Test for common security headers
-          Write-Output "Checking security headers..."
-          try {
-            $RESPONSE = Invoke-WebRequest -Uri "$SERVICE_URL/hello" -UseBasicParsing
-            $HEADERS = $RESPONSE.Headers
-            
-            if ($HEADERS.ContainsKey("X-Frame-Options") -or $HEADERS.ContainsKey("X-Content-Type-Options") -or $HEADERS.ContainsKey("X-XSS-Protection")) {
-              Write-Output "Warning: Security headers detected - this might indicate additional security measures."
-            } else {
-              Write-Output "Info: No additional security headers found (expected for basic application)."
-            }
-          } catch {
-            Write-Output "Warning: Could not check security headers"
-          }
+          echo "Checking security headers..."
+          if RESPONSE=$(curl -I -s "$SERVICE_URL/hello"); then
+            if echo "$RESPONSE" | grep -qi "X-Frame-Options\|X-Content-Type-Options\|X-XSS-Protection"; then
+              echo "Warning: Security headers detected - this might indicate additional security measures."
+            else
+              echo "Info: No additional security headers found (expected for basic application)."
+            fi
+          else
+            echo "Warning: Could not check security headers"
+          fi
 
           # Test for potential information disclosure
-          Write-Output "Testing for information disclosure..."
-          try {
-            $ERROR_RESPONSE = Invoke-WebRequest -Uri "$SERVICE_URL/nonexistent-endpoint" -UseBasicParsing -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Content
-            if ($ERROR_RESPONSE -match "stacktrace|exception|error") {
-              Write-Output "Warning: Potential information disclosure in error responses."
-            } else {
-              Write-Output "Info: Error responses appear sanitized."
-            }
-          } catch {
-            Write-Output "Info: Error endpoint returned expected error."
-          }
+          echo "Testing for information disclosure..."
+          if ERROR_RESPONSE=$(curl -s "$SERVICE_URL/nonexistent-endpoint" 2>/dev/null); then
+            if echo "$ERROR_RESPONSE" | grep -qi "stacktrace\|exception\|error"; then
+              echo "Warning: Potential information disclosure in error responses."
+            else
+              echo "Info: Error responses appear sanitized."
+            fi
+          else
+            echo "Info: Error endpoint returned expected error."
+          fi
 
-          Write-Output "Basic security assessment completed."
+          echo "Basic security assessment completed."
 
       # ----------------------------------------------------
       # 9. Deployment Summary
       # ----------------------------------------------------
       - name: Generate Deployment Report
         run: |
-          Write-Output "Deployment Summary:"
-          Write-Output "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-          Write-Output "Commit SHA: ${{ github.sha }}"
-          Write-Output "Environment: Minikube/Kubernetes"
-          Write-Output ""
+          echo "Deployment Summary:"
+          echo "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Environment: Minikube/Kubernetes"
+          echo ""
 
-          Write-Output "Resource Status:"
+          echo "Resource Status:"
           kubectl get all -n simple-api
-          Write-Output ""
+          echo ""
 
-          Write-Output "Service Accessibility:"
-          $SERVICE_URL = minikube service simple-api-service -n simple-api --url
-          Write-Output "External URL: $SERVICE_URL"
-          Write-Output ""
+          echo "Service Accessibility:"
+          SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
+          echo "External URL: $SERVICE_URL"
+          echo ""
 
-          Write-Output "Health Check Results:"
-          try {
-            $HEALTH = Invoke-RestMethod -Uri "$SERVICE_URL/actuator/health"
-            $HEALTH | ConvertTo-Json -Depth 10
-          } catch {
-            Write-Output "Could not retrieve health information"
-          }
-          Write-Output ""
+          echo "Health Check Results:"
+          if HEALTH=$(curl -s "$SERVICE_URL/actuator/health"); then
+            echo "$HEALTH"
+          else
+            echo "Could not retrieve health information"
+          fi
+          echo ""
 
-          Write-Output "Deployment completed successfully."
+          echo "Deployment completed successfully."
