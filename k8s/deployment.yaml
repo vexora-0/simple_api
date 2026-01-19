@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: simple-api
-        image: simple-api:6452bf5b3d0ed6c0abffab8beb90dd6638d27ac0
+        image: REPLACE_WITH_DOCKERHUB_USERNAME/simple-api:latest
         ports:
         - containerPort: 8080
           protocol: TCP
