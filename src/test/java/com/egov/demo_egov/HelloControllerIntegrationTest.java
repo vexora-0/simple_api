@@ -49,4 +49,17 @@ class HelloControllerIntegrationTest {
         // When & Then - Just verify it's accessible, content may be empty
         assertThat(restTemplate.getForEntity(url, String.class).getStatusCode().is2xxSuccessful()).isTrue();
     }
+
+    @Test
+    void actuatorSensitiveEndpoints_shouldBeInaccessible() {
+        // Given - Try to access sensitive actuator endpoints that should be disabled
+        String[] sensitiveEndpoints = { "/actuator/env", "/actuator/beans", "/actuator/configprops" };
+
+        for (String endpoint : sensitiveEndpoints) {
+            String url = "http://localhost:" + port + endpoint;
+
+            // When & Then - Should return 404 Not Found
+            assertThat(restTemplate.getForEntity(url, String.class).getStatusCode().value()).isEqualTo(404);
+        }
+    }
 }
