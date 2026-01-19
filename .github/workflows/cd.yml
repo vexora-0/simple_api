@@ -123,16 +123,15 @@ jobs:
             exit 1
           }
 
-          # Check if pods are running
-          $PODS_STATUS = kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
-          $READY_PODS = ($PODS_STATUS -split ' ' | Where-Object { $_ -eq "True" }).Count
-          if ($READY_PODS -lt 1) {
+          # Check if pods are running - using simpler approach
+          $READY_COUNT = kubectl get pods -n simple-api -l app=simple-api --field-selector=status.phase=Running -o json | ConvertFrom-Json | Select-Object -ExpandProperty items | Where-Object { $_.status.conditions | Where-Object { $_.type -eq "Ready" -and $_.status -eq "True" } } | Measure-Object | Select-Object -ExpandProperty Count
+          if ($READY_COUNT -lt 1) {
             Write-Output "ERROR: No pods are ready!"
             kubectl describe pods -n simple-api
             kubectl logs -l app=simple-api -n simple-api --tail=50
             exit 1
           }
-          Write-Output "SUCCESS: $READY_PODS pod(s) are ready and running"
+          Write-Output "SUCCESS: $READY_COUNT pod(s) are ready and running"
 
       # ----------------------------------------------------
       # 8. Basic Security Assessment (DAST Simulation)
