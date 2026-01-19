@@ -24,65 +24,80 @@ jobs:
         uses: actions/checkout@v4
 
       # ----------------------------------------------------
-      # 2. Verify Minikube Environment
+      # 2. Setup WSL Environment
+      # ----------------------------------------------------
+      - name: Verify WSL and Bash Availability
+        shell: powershell
+        run: |
+          Write-Host "Checking WSL installation..."
+          wsl --list --verbose
+          Write-Host "Testing bash availability..."
+          wsl bash -c "echo 'Bash is available in WSL'"
+          Write-Host "Checking minikube..."
+          wsl bash -c "export PATH=`$HOME/.local/bin:`$PATH; which minikube || echo 'Minikube not found in PATH'"
+          Write-Host "Checking kubectl..."
+          wsl bash -c "export PATH=`$HOME/.local/bin:`$PATH; which kubectl || echo 'Kubectl not found in PATH'"
+
+      # ----------------------------------------------------
+      # 3. Verify Minikube Environment
       # ----------------------------------------------------
       - name: Verify Minikube Status
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           minikube status
           kubectl get nodes
 
       # ----------------------------------------------------
-      # 3. Update Container Image Tag
+      # 4. Update Container Image Tag
       # ----------------------------------------------------
       - name: Update Deployment Image
-        shell: bash
+        shell: wsl
         run: |
           sed -i "s|image: .*simple-api:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}|g" k8s/deployment.yaml
           cat k8s/deployment.yaml | grep image:
 
       # ----------------------------------------------------
-      # 4. Deploy Application to Kubernetes
+      # 5. Deploy Application to Kubernetes
       # ----------------------------------------------------
       - name: Create Namespace
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/namespace.yaml
 
       - name: Apply ConfigMap
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/configmap.yaml
 
       - name: Deploy Application
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/deployment.yaml
 
       - name: Apply Service
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/service.yaml
 
       # ----------------------------------------------------
-      # 5. Monitor Deployment Rollout
+      # 6. Monitor Deployment Rollout
       # ----------------------------------------------------
       - name: Wait for Deployment to be Ready
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl rollout status deployment/simple-api-deployment -n simple-api --timeout=300s
 
       # ----------------------------------------------------
-      # 6. Verify Deployment Health
+      # 7. Verify Deployment Health
       # ----------------------------------------------------
       - name: Verify Deployment
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo "=== Deployment Status ==="
@@ -95,10 +110,10 @@ jobs:
           kubectl get svc -n simple-api
 
       # ----------------------------------------------------
-      # 7. Application Functionality Test (Smoke Test)
+      # 8. Application Functionality Test (Smoke Test)
       # ----------------------------------------------------
       - name: Run Smoke Test
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
 
@@ -133,10 +148,10 @@ jobs:
           echo "SUCCESS: $READY_PODS pod(s) are ready and running"
 
       # ----------------------------------------------------
-      # 8. Basic Security Assessment (DAST Simulation)
+      # 9. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
       - name: Perform Basic Security Assessment
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo "Performing basic security assessment..."
@@ -167,10 +182,10 @@ jobs:
           echo "Basic security assessment completed."
 
       # ----------------------------------------------------
-      # 9. Deployment Summary
+      # 10. Deployment Summary
       # ----------------------------------------------------
       - name: Generate Deployment Report
-        shell: bash
+        shell: wsl
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo "Deployment Summary:"
