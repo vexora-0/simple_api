@@ -1,0 +1,214 @@
+name: Simple API CD Pipeline
+
+on:
+  # Trigger after CI workflow completes successfully
+  workflow_run:
+    workflows: ["Simple API CI Pipeline"]
+    types:
+      - completed
+    branches: [ "main", "master" ]
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  deploy-to-kubernetes:
+    runs-on: self-hosted
+    # Only run if CI was successful or manually triggered
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      # ----------------------------------------------------
+      # 1. Checkout Source Code
+      # ----------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------
+      # 2. Verify Kubernetes Environment
+      # ----------------------------------------------------
+      - name: Verify Minikube and Kubernetes Setup
+        run: |
+          echo "=== Checking Minikube Status ==="
+          minikube status
+
+          echo "=== Checking Kubernetes Nodes ==="
+          kubectl get nodes
+
+          echo "=== Checking Kubernetes Version ==="
+          kubectl version --client
+
+      # ----------------------------------------------------
+      # 3. Update Container Image Version
+      # ----------------------------------------------------
+      - name: Update Deployment Image Tag
+        run: |
+          # Replace placeholder with actual DockerHub username
+          sed -i "s|REPLACE_WITH_DOCKERHUB_USERNAME|${{ secrets.DOCKERHUB_USERNAME }}|g" k8s/deployment.yaml
+
+          # Verify the change
+          echo "=== Updated Deployment Configuration ==="
+          grep "image:" k8s/deployment.yaml
+
+      # ----------------------------------------------------
+      # 4. Deploy Application to Kubernetes
+      # ----------------------------------------------------
+      - name: Create Application Namespace
+        run: |
+          echo "=== Creating Namespace ==="
+          kubectl apply -f k8s/namespace.yaml
+          kubectl get namespaces
+
+      - name: Deploy Configuration
+        run: |
+          echo "=== Applying ConfigMap ==="
+          kubectl apply -f k8s/configmap.yaml
+          kubectl get configmap -n simple-api
+
+      - name: Deploy Application
+        run: |
+          echo "=== Applying Deployment ==="
+          kubectl apply -f k8s/deployment.yaml
+
+      - name: Deploy Service
+        run: |
+          echo "=== Applying Service ==="
+          kubectl apply -f k8s/service.yaml
+
+      # ----------------------------------------------------
+      # 5. Monitor Deployment Rollout
+      # ----------------------------------------------------
+      - name: Wait for Deployment Rollout
+        run: |
+          echo "=== Monitoring Deployment Progress ==="
+          kubectl rollout status deployment/simple-api-deployment -n simple-api --timeout=300s
+
+      # ----------------------------------------------------
+      # 6. Verify Deployment Health
+      # ----------------------------------------------------
+      - name: Validate Deployment Status
+        run: |
+          echo "=== Deployment Verification ==="
+          kubectl get deployment -n simple-api
+
+          echo "=== Pod Status ==="
+          kubectl get pods -n simple-api
+
+          echo "=== Service Details ==="
+          kubectl get svc -n simple-api
+
+          echo "=== Checking Pod Readiness ==="
+          READY_PODS=$(kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -c "True" || echo "0")
+          TOTAL_PODS=$(kubectl get pods -n simple-api -l app=simple-api --no-headers | wc -l)
+
+          if [ "$READY_PODS" -lt "$TOTAL_PODS" ]; then
+            echo "ERROR: Only $READY_PODS out of $TOTAL_PODS pods are ready"
+            kubectl describe pods -n simple-api
+            kubectl logs -l app=simple-api -n simple-api --tail=50
+            exit 1
+          fi
+
+          echo "SUCCESS: All $READY_PODS pods are ready and running"
+
+      # ----------------------------------------------------
+      # 7. Application Functionality Test (Smoke Test)
+      # ----------------------------------------------------
+      - name: Execute Smoke Tests
+        run: |
+          echo "=== Running Application Smoke Tests ==="
+
+          # Get service URL using minikube
+          SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
+          echo "Service URL: $SERVICE_URL"
+
+          # Wait for service to be accessible
+          echo "Waiting for service to be accessible..."
+          timeout=120
+          while [ $timeout -gt 0 ]; do
+            if curl -f -s "$SERVICE_URL/hello" > /dev/null; then
+              break
+            fi
+            sleep 5
+            timeout=$((timeout - 5))
+          done
+
+          if [ $timeout -le 0 ]; then
+            echo "Service failed to become accessible within 2 minutes"
+            kubectl get endpoints -n simple-api
+            kubectl logs -l app=simple-api -n simple-api --tail=100
+            exit 1
+          fi
+
+          # Test main API endpoint
+          echo "Testing main API endpoint..."
+          RESPONSE=$(curl -s "$SERVICE_URL/hello")
+          if [[ "$RESPONSE" != *"Hello World"* ]]; then
+            echo "API test failed. Expected 'Hello World' in response, got: $RESPONSE"
+            exit 1
+          fi
+
+          # Test actuator health endpoint
+          echo "Testing health endpoint..."
+          HEALTH_STATUS=$(curl -s "$SERVICE_URL/actuator/health" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+          if [[ "$HEALTH_STATUS" != "UP" ]]; then
+            echo "Health check failed. Status: $HEALTH_STATUS"
+            exit 1
+          fi
+
+          echo "SUCCESS: All smoke tests passed"
+
+      # ----------------------------------------------------
+      # 8. Basic Security Assessment (DAST Simulation)
+      # ----------------------------------------------------
+      - name: Perform Basic Security Assessment
+        run: |
+          echo "=== Basic Security Assessment ==="
+
+          SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
+
+          # Test for common security headers
+          echo "Checking security headers..."
+          RESPONSE_HEADERS=$(curl -s -I "$SERVICE_URL/hello")
+
+          # Check if basic security headers are missing (this is expected for a basic Spring Boot app)
+          if echo "$RESPONSE_HEADERS" | grep -q "X-Frame-Options\|X-Content-Type-Options\|X-XSS-Protection"; then
+            echo "WARNING: Security headers detected - this might indicate additional security measures"
+          else
+            echo "INFO: No additional security headers found (expected for basic application)"
+          fi
+
+          # Test for potential information disclosure
+          echo "Testing for information disclosure..."
+          ERROR_RESPONSE=$(curl -s "$SERVICE_URL/nonexistent-endpoint" || true)
+          if echo "$ERROR_RESPONSE" | grep -q -i "stacktrace\|exception\|error"; then
+            echo "WARNING: Potential information disclosure in error responses"
+          else
+            echo "INFO: Error responses appear sanitized"
+          fi
+
+          echo "Basic security assessment completed"
+
+      # ----------------------------------------------------
+      # 9. Deployment Summary
+      # ----------------------------------------------------
+      - name: Generate Deployment Report
+        run: |
+          echo "=== DEPLOYMENT SUMMARY ==="
+          echo "Timestamp: $(date)"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Environment: Minikube/Kubernetes"
+          echo ""
+
+          echo "=== Resource Status ==="
+          kubectl get all -n simple-api
+          echo ""
+
+          echo "=== Service Accessibility ==="
+          SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
+          echo "External URL: $SERVICE_URL"
+          echo ""
+
+          echo "=== Health Check Results ==="
+          curl -s "$SERVICE_URL/actuator/health" | python3 -m json.tool 2>/dev/null || curl -s "$SERVICE_URL/actuator/health"
+          echo ""
+
+          echo "✅ Deployment completed successfully!"

@@ -1,0 +1,172 @@
+name: Simple API CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  security-and-quality:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      # ----------------------------------------------------
+      # 1. Checkout Source Code
+      # ----------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ----------------------------------------------------
+      # 2. Setup Java Runtime Environment
+      # ----------------------------------------------------
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: maven
+
+      # ----------------------------------------------------
+      # 3. Code Quality Check (Linting)
+      # ----------------------------------------------------
+      - name: Run Code Quality Analysis (Checkstyle)
+        run: ./mvnw checkstyle:check
+
+      # ----------------------------------------------------
+      # 4. Static Application Security Testing (SAST) - CodeQL
+      # ----------------------------------------------------
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: java
+          queries: +security-and-quality
+
+      # ----------------------------------------------------
+      # 5. Software Composition Analysis (SCA) - Dependency Scan
+      # ----------------------------------------------------
+      - name: Dependency Vulnerability Scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'dependency-scan-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+        continue-on-error: true
+
+      - name: Upload Dependency Scan Results to Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'dependency-scan-results.sarif'
+          category: 'dependency-security-scan'
+        continue-on-error: true
+
+      # ----------------------------------------------------
+      # 6. Unit Tests Execution
+      # ----------------------------------------------------
+      - name: Execute Unit Tests
+        run: ./mvnw test
+
+      # ----------------------------------------------------
+      # 7. Application Build
+      # ----------------------------------------------------
+      - name: Build Application JAR
+        run: ./mvnw clean package -DskipTests
+
+      # ----------------------------------------------------
+      # 8. Perform CodeQL Analysis
+      # ----------------------------------------------------
+      - name: Perform CodeQL Security Analysis
+        uses: github/codeql-action/analyze@v3
+
+      # ----------------------------------------------------
+      # 9. Docker Image Build
+      # ----------------------------------------------------
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        run: |
+          docker build --no-cache -t ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }} .
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:latest
+
+      # ----------------------------------------------------
+      # 10. Container Image Security Scan
+      # ----------------------------------------------------
+      - name: Container Vulnerability Scan (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}
+          format: 'sarif'
+          output: 'container-scan-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Upload Container Scan Results to Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'container-scan-results.sarif'
+          category: 'container-security-scan'
+
+      # ----------------------------------------------------
+      # 11. Container Runtime Validation
+      # ----------------------------------------------------
+      - name: Runtime Functionality Test
+        run: |
+          # Start container
+          docker run -d -p 8080:8080 --name simple-api-test ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}
+
+          # Wait for application to start
+          timeout=60
+          while [ $timeout -gt 0 ]; do
+            if curl -f -s http://localhost:8080/actuator/health > /dev/null; then
+              break
+            fi
+            sleep 2
+            timeout=$((timeout - 2))
+          done
+
+          if [ $timeout -le 0 ]; then
+            echo "Application failed to start within 60 seconds"
+            docker logs simple-api-test
+            docker stop simple-api-test
+            docker rm simple-api-test
+            exit 1
+          fi
+
+          # Test API endpoint
+          response=$(curl -s -X GET http://localhost:8080/hello)
+          if [[ "$response" != *"Hello World"* ]]; then
+            echo "API test failed. Expected 'Hello World' in response, got: $response"
+            docker logs simple-api-test
+            docker stop simple-api-test
+            docker rm simple-api-test
+            exit 1
+          fi
+
+          echo "Runtime test passed successfully"
+          docker stop simple-api-test
+          docker rm simple-api-test
+
+      # ----------------------------------------------------
+      # 12. Docker Registry Authentication & Push
+      # ----------------------------------------------------
+      - name: Authenticate with Docker Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Trusted Image to Registry
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:latest

@@ -31,3 +31,49 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### GitHub Actions ###
+# GitHub Actions self-hosted runner (temporary - remove when not needed)
+actions-runner/
+
+# GitHub Actions cache and temp files (keep workflows!)
+.github/actions/
+.github/_temp/
+
+# Keep CI/CD workflows - these are important!
+!.github/workflows/
+
+### Docker ###
+.dockerignore
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Logs ###
+*.log
+logs/
+
+### Temporary files ###
+*.tmp
+*.temp
+.cache/
+tmp/
+
+### Environment files ###
+.env
+.env.local
+.env.*.local
+
+### IDE files ###
+*.swp
+*.swo
+*~
+
+### Build artifacts ###
+!**/src/main/**/target/
+!**/src/test/**/target/
+target/
+build/
+out/
+dist/
