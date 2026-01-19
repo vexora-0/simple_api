@@ -24,6 +24,10 @@ spec:
         envFrom:
         - configMapRef:
             name: simple-api-config
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+          readOnly: true
         resources:
           requests:
             memory: "256Mi"
@@ -52,5 +56,8 @@ spec:
           runAsNonRoot: true
           runAsUser: 1000
           readOnlyRootFilesystem: true
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
       securityContext:
         fsGroup: 1000
