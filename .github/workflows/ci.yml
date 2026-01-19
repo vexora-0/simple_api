@@ -106,6 +106,7 @@ jobs:
       # 10. Container Image Security Scan
       # ----------------------------------------------------
       - name: Container Vulnerability Scan (Trivy)
+        continue-on-error: true
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: simple-api:${{ github.sha }}
@@ -116,14 +117,21 @@ jobs:
           exit-code: '1'
 
       - name: Upload Container Scan Results to Security Tab
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'container-scan-results.sarif'
           category: 'container-security-scan'
 
       - name: Check for Security Vulnerabilities
+        if: always()
         run: |
           echo "Analyzing container security scan results..."
+
+          if [ ! -f container-scan-results.sarif ]; then
+            echo "Error: SARIF file not found. Trivy scan may have failed."
+            exit 1
+          fi
 
           # Check if SARIF file contains any CRITICAL vulnerabilities
           if grep -q '"severity":\s*"CRITICAL"' container-scan-results.sarif 2>/dev/null; then
