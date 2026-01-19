@@ -109,9 +109,9 @@ jobs:
       # 10. Container Image Security Scan
       # ----------------------------------------------------
       - name: Container Vulnerability Scan (Trivy)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}
+          image-ref: simple-api:${{ github.sha }}
           format: 'sarif'
           output: 'container-scan-results.sarif'
           severity: 'CRITICAL'
@@ -153,7 +153,7 @@ jobs:
       - name: Runtime Functionality Test
         run: |
           # Start container
-          docker run -d -p 8080:8080 --name simple-api-test ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}
+          docker run -d -p 8080:8080 --name simple-api-test simple-api:${{ github.sha }}
 
           # Wait for application to start
           timeout=60
