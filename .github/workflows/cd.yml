@@ -19,7 +19,7 @@ jobs:
     defaults:
       run:
         shell: powershell
-        
+
     steps:
       # ----------------------------------------------------
       # 1. Checkout Source Code
@@ -83,8 +83,16 @@ jobs:
       # ----------------------------------------------------
       - name: Run Smoke Test
         run: |
-          # Get service URL using minikube
-          $SERVICE_URL = minikube service simple-api-service -n simple-api --url
+          # Start port forwarding in background
+          Write-Output "Starting port forwarding..."
+          $portForward = Start-Job -ScriptBlock {
+            kubectl port-forward svc/simple-api-service -n simple-api 8080:80
+          }
+
+          # Wait for port forwarding to establish
+          Start-Sleep -Seconds 10
+
+          $SERVICE_URL = "http://localhost:8080"
           Write-Output "Service URL: $SERVICE_URL"
 
           # Test the main API endpoint
@@ -114,6 +122,10 @@ jobs:
           }
           Write-Output "SUCCESS: $READY_PODS pod(s) are ready and running"
 
+          # Cleanup port forwarding
+          Stop-Job $portForward -ErrorAction SilentlyContinue
+          Remove-Job $portForward -ErrorAction SilentlyContinue
+
       # ----------------------------------------------------
       # 8. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
@@ -121,8 +133,13 @@ jobs:
         run: |
           Write-Output "Performing basic security assessment..."
 
-          # Get service URL using minikube
-          $SERVICE_URL = minikube service simple-api-service -n simple-api --url
+          # Start port forwarding for security assessment
+          $securityPortForward = Start-Job -ScriptBlock {
+            kubectl port-forward svc/simple-api-service -n simple-api 8081:80
+          }
+          Start-Sleep -Seconds 5
+
+          $SERVICE_URL = "http://localhost:8081"
 
           # Test for common security headers
           Write-Output "Checking security headers..."
@@ -152,6 +169,10 @@ jobs:
             Write-Output "Info: Error endpoint returned expected error."
           }
 
+          # Cleanup security assessment port forwarding
+          Stop-Job $securityPortForward -ErrorAction SilentlyContinue
+          Remove-Job $securityPortForward -ErrorAction SilentlyContinue
+
           Write-Output "Basic security assessment completed."
 
       # ----------------------------------------------------
@@ -170,8 +191,9 @@ jobs:
           Write-Output ""
 
           Write-Output "Service Accessibility:"
-          $SERVICE_URL = minikube service simple-api-service -n simple-api --url
-          Write-Output "External URL: $SERVICE_URL"
+          Write-Output "Service Type: ClusterIP (internal access only)"
+          Write-Output "Port: 80"
+          Write-Output "Note: Accessible via kubectl port-forward or Ingress"
           Write-Output ""
 
           Write-Output "Health Check Results:"
