@@ -27,6 +27,7 @@ jobs:
       # 2. Verify Minikube Environment
       # ----------------------------------------------------
       - name: Verify Minikube Status
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           minikube status
@@ -36,6 +37,7 @@ jobs:
       # 3. Update Container Image Tag
       # ----------------------------------------------------
       - name: Update Deployment Image
+        shell: bash
         run: |
           sed -i "s|image: .*simple-api:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}|g" k8s/deployment.yaml
           cat k8s/deployment.yaml | grep image:
@@ -44,21 +46,25 @@ jobs:
       # 4. Deploy Application to Kubernetes
       # ----------------------------------------------------
       - name: Create Namespace
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/namespace.yaml
 
       - name: Apply ConfigMap
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/configmap.yaml
 
       - name: Deploy Application
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/deployment.yaml
 
       - name: Apply Service
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/service.yaml
@@ -67,6 +73,7 @@ jobs:
       # 5. Monitor Deployment Rollout
       # ----------------------------------------------------
       - name: Wait for Deployment to be Ready
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           kubectl rollout status deployment/simple-api-deployment -n simple-api --timeout=300s
@@ -75,6 +82,7 @@ jobs:
       # 6. Verify Deployment Health
       # ----------------------------------------------------
       - name: Verify Deployment
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo "=== Deployment Status ==="
@@ -90,6 +98,7 @@ jobs:
       # 7. Application Functionality Test (Smoke Test)
       # ----------------------------------------------------
       - name: Run Smoke Test
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
 
@@ -127,6 +136,7 @@ jobs:
       # 8. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
       - name: Perform Basic Security Assessment
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo "Performing basic security assessment..."
@@ -160,6 +170,7 @@ jobs:
       # 9. Deployment Summary
       # ----------------------------------------------------
       - name: Generate Deployment Report
+        shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           echo "Deployment Summary:"
