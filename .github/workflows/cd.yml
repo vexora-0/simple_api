@@ -15,6 +15,10 @@ jobs:
     runs-on: self-hosted
     # Only run if CI was successful or manually triggered
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    
+    defaults:
+      run:
+        shell: bash
 
     steps:
       # ----------------------------------------------------
