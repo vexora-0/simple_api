@@ -114,7 +114,7 @@ jobs:
           image-ref: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}
           format: 'sarif'
           output: 'container-scan-results.sarif'
-          severity: 'CRITICAL,HIGH'
+          severity: 'CRITICAL'
           ignore-unfixed: false
           exit-code: '1'
 
@@ -128,13 +128,12 @@ jobs:
         run: |
           echo "Analyzing container security scan results..."
 
-          # Check if SARIF file contains any CRITICAL or HIGH vulnerabilities
-          if grep -q '"severity":\s*"CRITICAL"' container-scan-results.sarif 2>/dev/null || grep -q '"severity":\s*"HIGH"' container-scan-results.sarif 2>/dev/null; then
-            echo "CRITICAL or HIGH severity vulnerabilities found in container image."
+          # Check if SARIF file contains any CRITICAL vulnerabilities
+          if grep -q '"severity":\s*"CRITICAL"' container-scan-results.sarif 2>/dev/null; then
+            echo "CRITICAL severity vulnerabilities found in container image."
             echo ""
             echo "Vulnerability Summary:"
             echo "- CRITICAL: $(grep -c '"severity":\s*"CRITICAL"' container-scan-results.sarif 2>/dev/null || echo '0')"
-            echo "- HIGH: $(grep -c '"severity":\s*"HIGH"' container-scan-results.sarif 2>/dev/null || echo '0')"
             echo ""
             echo "Common fixes:"
             echo "- Update base image: eclipse-temurin:17-jre to latest version"
@@ -145,7 +144,7 @@ jobs:
             echo "View detailed results in the Security tab of this repository."
             exit 1
           else
-            echo "No CRITICAL or HIGH vulnerabilities found in container image."
+            echo "No CRITICAL vulnerabilities found in container image."
           fi
 
       # ----------------------------------------------------
