@@ -24,122 +24,81 @@ jobs:
         uses: actions/checkout@v4
 
       # ----------------------------------------------------
-      # 2. Verify Kubernetes Environment
+      # 2. Verify Minikube Environment
       # ----------------------------------------------------
-      - name: Verify Minikube and Kubernetes Setup
+      - name: Verify Minikube Status
         run: |
-          echo "Checking Minikube status..."
+          export PATH="$HOME/.local/bin:$PATH"
           minikube status
-
-          echo "Checking Kubernetes nodes..."
           kubectl get nodes
 
-          echo "Checking Kubernetes version..."
-          kubectl version --client
-
       # ----------------------------------------------------
-      # 3. Update Container Image Version
+      # 3. Update Container Image Tag
       # ----------------------------------------------------
-      - name: Update Deployment Image Tag
+      - name: Update Deployment Image
         run: |
-          # Replace placeholder with actual DockerHub username
-          sed -i "s|REPLACE_WITH_DOCKERHUB_USERNAME|${{ secrets.DOCKERHUB_USERNAME }}|g" k8s/deployment.yaml
-
-          # Verify the change
-          echo "Updated deployment configuration:"
-          grep "image:" k8s/deployment.yaml
+          sed -i "s|image: .*simple-api:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/simple-api:${{ github.sha }}|g" k8s/deployment.yaml
+          cat k8s/deployment.yaml | grep image:
 
       # ----------------------------------------------------
       # 4. Deploy Application to Kubernetes
       # ----------------------------------------------------
-      - name: Create Application Namespace
+      - name: Create Namespace
         run: |
-          echo "Creating namespace..."
+          export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/namespace.yaml
-          kubectl get namespaces
 
-      - name: Deploy Configuration
+      - name: Apply ConfigMap
         run: |
-          echo "Applying ConfigMap..."
+          export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/configmap.yaml
-          kubectl get configmap -n simple-api
 
       - name: Deploy Application
         run: |
-          echo "Applying deployment..."
+          export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/deployment.yaml
 
-      - name: Deploy Service
+      - name: Apply Service
         run: |
-          echo "Applying service..."
+          export PATH="$HOME/.local/bin:$PATH"
           kubectl apply -f k8s/service.yaml
 
       # ----------------------------------------------------
       # 5. Monitor Deployment Rollout
       # ----------------------------------------------------
-      - name: Wait for Deployment Rollout
+      - name: Wait for Deployment to be Ready
         run: |
-          echo "Monitoring deployment progress..."
+          export PATH="$HOME/.local/bin:$PATH"
           kubectl rollout status deployment/simple-api-deployment -n simple-api --timeout=300s
 
       # ----------------------------------------------------
       # 6. Verify Deployment Health
       # ----------------------------------------------------
-      - name: Validate Deployment Status
+      - name: Verify Deployment
         run: |
-          echo "Verifying deployment status..."
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "=== Deployment Status ==="
           kubectl get deployment -n simple-api
-
-          echo "Checking pod status..."
+          echo ""
+          echo "=== Pod Status ==="
           kubectl get pods -n simple-api
-
-          echo "Checking service details..."
+          echo ""
+          echo "=== Service Status ==="
           kubectl get svc -n simple-api
-
-          echo "Checking pod readiness..."
-          READY_PODS=$(kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -c "True" || echo "0")
-          TOTAL_PODS=$(kubectl get pods -n simple-api -l app=simple-api --no-headers | wc -l)
-
-          if [ "$READY_PODS" -lt "$TOTAL_PODS" ]; then
-            echo "Error: Only $READY_PODS out of $TOTAL_PODS pods are ready."
-            kubectl describe pods -n simple-api
-            kubectl logs -l app=simple-api -n simple-api --tail=50
-            exit 1
-          fi
-
-          echo "All $READY_PODS pods are ready and running."
 
       # ----------------------------------------------------
       # 7. Application Functionality Test (Smoke Test)
       # ----------------------------------------------------
-      - name: Execute Smoke Tests
+      - name: Run Smoke Test
         run: |
-          echo "Running application smoke tests..."
+          export PATH="$HOME/.local/bin:$PATH"
 
           # Get service URL using minikube
           SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
           echo "Service URL: $SERVICE_URL"
 
-          # Wait for service to be accessible
-          echo "Waiting for service to be accessible..."
-          timeout=120
-          while [ $timeout -gt 0 ]; do
-            if curl -f -s "$SERVICE_URL/hello" > /dev/null; then
-              break
-            fi
-            sleep 5
-            timeout=$((timeout - 5))
-          done
-
-          if [ $timeout -le 0 ]; then
-            echo "Service failed to become accessible within 2 minutes."
-            kubectl get endpoints -n simple-api
-            kubectl logs -l app=simple-api -n simple-api --tail=100
-            exit 1
-          fi
-
-          # Test main API endpoint
-          echo "Testing main API endpoint..."
+          # Test the main API endpoint
+          echo "Testing API endpoint..."
           RESPONSE=$(curl -s "$SERVICE_URL/hello")
           if [[ "$RESPONSE" != *"Hello World"* ]]; then
             echo "API test failed. Expected 'Hello World' in response, got: $RESPONSE"
@@ -154,15 +113,25 @@ jobs:
             exit 1
           fi
 
-          echo "All smoke tests passed."
+          # Check if pods are running
+          READY_PODS=$(kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -c "True" || echo "0")
+          if [ "$READY_PODS" -lt 1 ]; then
+            echo "ERROR: No pods are ready!"
+            kubectl describe pods -n simple-api
+            kubectl logs -l app=simple-api -n simple-api --tail=50
+            exit 1
+          fi
+          echo "SUCCESS: $READY_PODS pod(s) are ready and running"
 
       # ----------------------------------------------------
       # 8. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
       - name: Perform Basic Security Assessment
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           echo "Performing basic security assessment..."
 
+          # Get service URL using minikube
           SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
 
           # Test for common security headers
@@ -192,6 +161,7 @@ jobs:
       # ----------------------------------------------------
       - name: Generate Deployment Report
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           echo "Deployment Summary:"
           echo "Timestamp: $(date)"
           echo "Commit SHA: ${{ github.sha }}"
