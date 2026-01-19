@@ -37,6 +37,9 @@ jobs:
       # ----------------------------------------------------
       # 3. Code Quality Check (Linting)
       # ----------------------------------------------------
+      - name: Make Maven Wrapper Executable
+        run: chmod +x ./mvnw
+
       - name: Run Code Quality Analysis (Checkstyle)
         run: ./mvnw checkstyle:check
 
@@ -73,13 +76,17 @@ jobs:
       # 6. Unit Tests Execution
       # ----------------------------------------------------
       - name: Execute Unit Tests
-        run: ./mvnw test
+        run: |
+          chmod +x ./mvnw
+          ./mvnw test
 
       # ----------------------------------------------------
       # 7. Application Build
       # ----------------------------------------------------
       - name: Build Application JAR
-        run: ./mvnw clean package -DskipTests
+        run: |
+          chmod +x ./mvnw
+          ./mvnw clean package -DskipTests
 
       # ----------------------------------------------------
       # 8. Perform CodeQL Analysis
