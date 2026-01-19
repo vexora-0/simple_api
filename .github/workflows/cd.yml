@@ -83,31 +83,43 @@ jobs:
       # ----------------------------------------------------
       - name: Run Smoke Test
         run: |
-          # Start port forwarding in background
-          Write-Output "Starting port forwarding..."
-          $portForward = Start-Job -ScriptBlock {
-            kubectl port-forward svc/simple-api-service -n simple-api 8080:80
+          Write-Output "Testing application functionality..."
+
+          # Get a running pod name
+          $POD_NAME = kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[0].metadata.name}'
+          if (-not $POD_NAME) {
+            Write-Output "ERROR: No running pods found!"
+            kubectl get pods -n simple-api
+            exit 1
           }
+          Write-Output "Testing with pod: $POD_NAME"
 
-          # Wait for port forwarding to establish
-          Start-Sleep -Seconds 10
-
-          $SERVICE_URL = "http://localhost:8080"
-          Write-Output "Service URL: $SERVICE_URL"
-
-          # Test the main API endpoint
+          # Test the main API endpoint using kubectl exec
           Write-Output "Testing API endpoint..."
-          $RESPONSE = Invoke-WebRequest -Uri "$SERVICE_URL/hello" -UseBasicParsing | Select-Object -ExpandProperty Content
-          if ($RESPONSE -notmatch "Hello World") {
-            Write-Output "API test failed. Expected 'Hello World' in response, got: $RESPONSE"
+          $apiTest = kubectl exec -n simple-api $POD_NAME -- curl -f -s http://simple-api-service/hello
+          if ($LASTEXITCODE -ne 0 -or $apiTest -notmatch "Hello World") {
+            Write-Output "API test failed. Expected 'Hello World' in response, got: $apiTest"
+            kubectl logs -n simple-api $POD_NAME --tail=20
             exit 1
           }
 
           # Test actuator health endpoint
           Write-Output "Testing health endpoint..."
-          $HEALTH_RESPONSE = Invoke-RestMethod -Uri "$SERVICE_URL/actuator/health"
-          if ($HEALTH_RESPONSE.status -ne "UP") {
-            Write-Output "Health check failed. Status: $($HEALTH_RESPONSE.status)"
+          $healthTest = kubectl exec -n simple-api $POD_NAME -- curl -f -s http://simple-api-service/actuator/health
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "Health check failed. Curl exit code: $LASTEXITCODE"
+            kubectl logs -n simple-api $POD_NAME --tail=20
+            exit 1
+          }
+
+          try {
+            $HEALTH_RESPONSE = $healthTest | ConvertFrom-Json
+            if ($HEALTH_RESPONSE.status -ne "UP") {
+              Write-Output "Health check failed. Status: $($HEALTH_RESPONSE.status)"
+              exit 1
+            }
+          } catch {
+            Write-Output "Health check response parsing failed: $healthTest"
             exit 1
           }
 
@@ -122,10 +134,6 @@ jobs:
           }
           Write-Output "SUCCESS: $READY_PODS pod(s) are ready and running"
 
-          # Cleanup port forwarding
-          Stop-Job $portForward -ErrorAction SilentlyContinue
-          Remove-Job $portForward -ErrorAction SilentlyContinue
-
       # ----------------------------------------------------
       # 8. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
@@ -133,45 +141,21 @@ jobs:
         run: |
           Write-Output "Performing basic security assessment..."
 
-          # Start port forwarding for security assessment
-          $securityPortForward = Start-Job -ScriptBlock {
-            kubectl port-forward svc/simple-api-service -n simple-api 8081:80
-          }
-          Start-Sleep -Seconds 5
-
-          $SERVICE_URL = "http://localhost:8081"
-
-          # Test for common security headers
-          Write-Output "Checking security headers..."
-          try {
-            $RESPONSE = Invoke-WebRequest -Uri "$SERVICE_URL/hello" -UseBasicParsing
-            $HEADERS = $RESPONSE.Headers
-            
-            if ($HEADERS.ContainsKey("X-Frame-Options") -or $HEADERS.ContainsKey("X-Content-Type-Options") -or $HEADERS.ContainsKey("X-XSS-Protection")) {
-              Write-Output "Warning: Security headers detected - this might indicate additional security measures."
-            } else {
-              Write-Output "Info: No additional security headers found (expected for basic application)."
-            }
-          } catch {
-            Write-Output "Warning: Could not check security headers"
+          # Get a running pod name
+          $POD_NAME = kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[0].metadata.name}'
+          if (-not $POD_NAME) {
+            Write-Output "ERROR: No running pods found for security assessment!"
+            exit 1
           }
 
-          # Test for potential information disclosure
+          # Test for potential information disclosure using kubectl exec
           Write-Output "Testing for information disclosure..."
-          try {
-            $ERROR_RESPONSE = Invoke-WebRequest -Uri "$SERVICE_URL/nonexistent-endpoint" -UseBasicParsing -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Content
-            if ($ERROR_RESPONSE -match "stacktrace|exception|error") {
-              Write-Output "Warning: Potential information disclosure in error responses."
-            } else {
-              Write-Output "Info: Error responses appear sanitized."
-            }
-          } catch {
-            Write-Output "Info: Error endpoint returned expected error."
+          $errorResponse = kubectl exec -n simple-api $POD_NAME -- curl -s http://simple-api-service/nonexistent-endpoint
+          if ($errorResponse -match "stacktrace|exception|error|Exception|Error") {
+            Write-Output "Warning: Potential information disclosure in error responses."
+          } else {
+            Write-Output "Info: Error responses appear sanitized."
           }
-
-          # Cleanup security assessment port forwarding
-          Stop-Job $securityPortForward -ErrorAction SilentlyContinue
-          Remove-Job $securityPortForward -ErrorAction SilentlyContinue
 
           Write-Output "Basic security assessment completed."
 
