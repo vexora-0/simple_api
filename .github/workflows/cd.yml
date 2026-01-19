@@ -6,7 +6,7 @@ on:
     workflows: ["Simple API CI Pipeline"]
     types:
       - completed
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   # Allow manual trigger
   workflow_dispatch:
 
