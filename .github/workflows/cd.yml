@@ -19,6 +19,9 @@ jobs:
     defaults:
       run:
         shell: powershell
+    
+    env:
+      PATH: ${{ env.PATH }};C:\Program Files\Kubernetes\Minikube
 
     steps:
       # ----------------------------------------------------
