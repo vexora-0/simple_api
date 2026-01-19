@@ -1,6 +1,9 @@
 # Multi-stage build for Spring Boot application
 FROM eclipse-temurin:17-jdk AS builder
 
+# Install security updates in builder stage
+RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
@@ -20,8 +23,12 @@ RUN ./mvnw clean package -DskipTests
 # Production stage
 FROM eclipse-temurin:17-jre
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# Install security updates and curl for health checks
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser

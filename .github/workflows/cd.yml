@@ -28,13 +28,13 @@ jobs:
       # ----------------------------------------------------
       - name: Verify Minikube and Kubernetes Setup
         run: |
-          echo "=== Checking Minikube Status ==="
+          echo "Checking Minikube status..."
           minikube status
 
-          echo "=== Checking Kubernetes Nodes ==="
+          echo "Checking Kubernetes nodes..."
           kubectl get nodes
 
-          echo "=== Checking Kubernetes Version ==="
+          echo "Checking Kubernetes version..."
           kubectl version --client
 
       # ----------------------------------------------------
@@ -46,7 +46,7 @@ jobs:
           sed -i "s|REPLACE_WITH_DOCKERHUB_USERNAME|${{ secrets.DOCKERHUB_USERNAME }}|g" k8s/deployment.yaml
 
           # Verify the change
-          echo "=== Updated Deployment Configuration ==="
+          echo "Updated deployment configuration:"
           grep "image:" k8s/deployment.yaml
 
       # ----------------------------------------------------
@@ -54,24 +54,24 @@ jobs:
       # ----------------------------------------------------
       - name: Create Application Namespace
         run: |
-          echo "=== Creating Namespace ==="
+          echo "Creating namespace..."
           kubectl apply -f k8s/namespace.yaml
           kubectl get namespaces
 
       - name: Deploy Configuration
         run: |
-          echo "=== Applying ConfigMap ==="
+          echo "Applying ConfigMap..."
           kubectl apply -f k8s/configmap.yaml
           kubectl get configmap -n simple-api
 
       - name: Deploy Application
         run: |
-          echo "=== Applying Deployment ==="
+          echo "Applying deployment..."
           kubectl apply -f k8s/deployment.yaml
 
       - name: Deploy Service
         run: |
-          echo "=== Applying Service ==="
+          echo "Applying service..."
           kubectl apply -f k8s/service.yaml
 
       # ----------------------------------------------------
@@ -79,7 +79,7 @@ jobs:
       # ----------------------------------------------------
       - name: Wait for Deployment Rollout
         run: |
-          echo "=== Monitoring Deployment Progress ==="
+          echo "Monitoring deployment progress..."
           kubectl rollout status deployment/simple-api-deployment -n simple-api --timeout=300s
 
       # ----------------------------------------------------
@@ -87,34 +87,34 @@ jobs:
       # ----------------------------------------------------
       - name: Validate Deployment Status
         run: |
-          echo "=== Deployment Verification ==="
+          echo "Verifying deployment status..."
           kubectl get deployment -n simple-api
 
-          echo "=== Pod Status ==="
+          echo "Checking pod status..."
           kubectl get pods -n simple-api
 
-          echo "=== Service Details ==="
+          echo "Checking service details..."
           kubectl get svc -n simple-api
 
-          echo "=== Checking Pod Readiness ==="
+          echo "Checking pod readiness..."
           READY_PODS=$(kubectl get pods -n simple-api -l app=simple-api -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -c "True" || echo "0")
           TOTAL_PODS=$(kubectl get pods -n simple-api -l app=simple-api --no-headers | wc -l)
 
           if [ "$READY_PODS" -lt "$TOTAL_PODS" ]; then
-            echo "ERROR: Only $READY_PODS out of $TOTAL_PODS pods are ready"
+            echo "Error: Only $READY_PODS out of $TOTAL_PODS pods are ready."
             kubectl describe pods -n simple-api
             kubectl logs -l app=simple-api -n simple-api --tail=50
             exit 1
           fi
 
-          echo "SUCCESS: All $READY_PODS pods are ready and running"
+          echo "All $READY_PODS pods are ready and running."
 
       # ----------------------------------------------------
       # 7. Application Functionality Test (Smoke Test)
       # ----------------------------------------------------
       - name: Execute Smoke Tests
         run: |
-          echo "=== Running Application Smoke Tests ==="
+          echo "Running application smoke tests..."
 
           # Get service URL using minikube
           SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
@@ -132,7 +132,7 @@ jobs:
           done
 
           if [ $timeout -le 0 ]; then
-            echo "Service failed to become accessible within 2 minutes"
+            echo "Service failed to become accessible within 2 minutes."
             kubectl get endpoints -n simple-api
             kubectl logs -l app=simple-api -n simple-api --tail=100
             exit 1
@@ -154,14 +154,14 @@ jobs:
             exit 1
           fi
 
-          echo "SUCCESS: All smoke tests passed"
+          echo "All smoke tests passed."
 
       # ----------------------------------------------------
       # 8. Basic Security Assessment (DAST Simulation)
       # ----------------------------------------------------
       - name: Perform Basic Security Assessment
         run: |
-          echo "=== Basic Security Assessment ==="
+          echo "Performing basic security assessment..."
 
           SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
 
@@ -171,44 +171,44 @@ jobs:
 
           # Check if basic security headers are missing (this is expected for a basic Spring Boot app)
           if echo "$RESPONSE_HEADERS" | grep -q "X-Frame-Options\|X-Content-Type-Options\|X-XSS-Protection"; then
-            echo "WARNING: Security headers detected - this might indicate additional security measures"
+            echo "Warning: Security headers detected - this might indicate additional security measures."
           else
-            echo "INFO: No additional security headers found (expected for basic application)"
+            echo "Info: No additional security headers found (expected for basic application)."
           fi
 
           # Test for potential information disclosure
           echo "Testing for information disclosure..."
           ERROR_RESPONSE=$(curl -s "$SERVICE_URL/nonexistent-endpoint" || true)
           if echo "$ERROR_RESPONSE" | grep -q -i "stacktrace\|exception\|error"; then
-            echo "WARNING: Potential information disclosure in error responses"
+            echo "Warning: Potential information disclosure in error responses."
           else
-            echo "INFO: Error responses appear sanitized"
+            echo "Info: Error responses appear sanitized."
           fi
 
-          echo "Basic security assessment completed"
+          echo "Basic security assessment completed."
 
       # ----------------------------------------------------
       # 9. Deployment Summary
       # ----------------------------------------------------
       - name: Generate Deployment Report
         run: |
-          echo "=== DEPLOYMENT SUMMARY ==="
+          echo "Deployment Summary:"
           echo "Timestamp: $(date)"
           echo "Commit SHA: ${{ github.sha }}"
           echo "Environment: Minikube/Kubernetes"
           echo ""
 
-          echo "=== Resource Status ==="
+          echo "Resource Status:"
           kubectl get all -n simple-api
           echo ""
 
-          echo "=== Service Accessibility ==="
+          echo "Service Accessibility:"
           SERVICE_URL=$(minikube service simple-api-service -n simple-api --url)
           echo "External URL: $SERVICE_URL"
           echo ""
 
-          echo "=== Health Check Results ==="
+          echo "Health Check Results:"
           curl -s "$SERVICE_URL/actuator/health" | python3 -m json.tool 2>/dev/null || curl -s "$SERVICE_URL/actuator/health"
           echo ""
 
-          echo "✅ Deployment completed successfully!"
+          echo "Deployment completed successfully."

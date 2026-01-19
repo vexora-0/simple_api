@@ -115,7 +115,7 @@ jobs:
           format: 'sarif'
           output: 'container-scan-results.sarif'
           severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
+          ignore-unfixed: false
           exit-code: '1'
 
       - name: Upload Container Scan Results to Security Tab
@@ -123,6 +123,30 @@ jobs:
         with:
           sarif_file: 'container-scan-results.sarif'
           category: 'container-security-scan'
+
+      - name: Check for Security Vulnerabilities
+        run: |
+          echo "Analyzing container security scan results..."
+
+          # Check if SARIF file contains any CRITICAL or HIGH vulnerabilities
+          if grep -q '"severity":\s*"CRITICAL"' container-scan-results.sarif 2>/dev/null || grep -q '"severity":\s*"HIGH"' container-scan-results.sarif 2>/dev/null; then
+            echo "CRITICAL or HIGH severity vulnerabilities found in container image."
+            echo ""
+            echo "Vulnerability Summary:"
+            echo "- CRITICAL: $(grep -c '"severity":\s*"CRITICAL"' container-scan-results.sarif 2>/dev/null || echo '0')"
+            echo "- HIGH: $(grep -c '"severity":\s*"HIGH"' container-scan-results.sarif 2>/dev/null || echo '0')"
+            echo ""
+            echo "Common fixes:"
+            echo "- Update base image: eclipse-temurin:17-jre to latest version"
+            echo "- Update Maven dependencies in pom.xml"
+            echo "- Use security-patched base images"
+            echo "- Review and fix vulnerable packages"
+            echo ""
+            echo "View detailed results in the Security tab of this repository."
+            exit 1
+          else
+            echo "No CRITICAL or HIGH vulnerabilities found in container image."
+          fi
 
       # ----------------------------------------------------
       # 11. Container Runtime Validation
@@ -160,7 +184,7 @@ jobs:
             exit 1
           fi
 
-          echo "Runtime test passed successfully"
+          echo "Runtime test passed."
           docker stop simple-api-test
           docker rm simple-api-test
 
