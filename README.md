@@ -21,87 +21,16 @@ The project implements a complete DevOps pipeline covering:
 - **Containerization**: Docker image building and security scanning
 - **Continuous Deployment**: Automated deployment to Kubernetes with self-hosted runners
 
-## Table of Contents
-
-- [Architecture](#architecture)
-- [CI/CD Pipeline](#cicd-pipeline)
-- [Local Development](#local-development)
-- [Deployment](#deployment)
-- [Security](#security)
-- [Monitoring](#monitoring)
-
-## Architecture
-
-### Application Architecture
-
-```
-Spring Boot Application
-├── REST Controller (/hello)
-├── Actuator Endpoints (/actuator/health, /actuator/info)
-└── Configuration Management
-```
-
-### CI/CD Architecture
-
-```
-GitHub Actions CI/CD Pipeline
-├── CI Pipeline (Ubuntu runners)
-│   ├── Code Quality (Checkstyle)
-│   ├── Security Scanning (SAST, SCA)
-│   ├── Unit Testing
-│   ├── Container Building
-│   └── Image Security Scanning
-└── CD Pipeline (Self-hosted runners)
-    ├── Kubernetes Deployment
-    ├── Service Configuration
-    └── Runtime Validation
-```
-
-## CI/CD Pipeline
-
-### Continuous Integration Pipeline
-
-The CI pipeline executes the following stages:
-
-| Stage | Purpose | Tools |
-|-------|---------|-------|
-| **Checkout** | Retrieve source code | Git |
-| **Setup Runtime** | Install Java 17 and dependencies | Actions/setup-java |
-| **Linting** | Enforce coding standards | Maven Checkstyle |
-| **SAST** | Detect code-level vulnerabilities | GitHub CodeQL |
-| **SCA** | Scan for vulnerable dependencies | Trivy |
-| **Unit Tests** | Validate business logic | JUnit |
-| **Build** | Package application | Maven |
-| **Docker Build** | Create container image | Docker |
-| **Image Scan** | Detect OS/library vulnerabilities | Trivy |
-| **Runtime Test** | Validate container behavior | Docker + curl |
-| **Registry Push** | Publish trusted image | Docker Hub |
-
-### Continuous Deployment Pipeline
-
-The CD pipeline deploys to a Minikube Kubernetes cluster:
-
-| Stage | Purpose | Tools |
-|-------|---------|-------|
-| **Environment Check** | Verify K8s cluster status | kubectl, minikube |
-| **Image Update** | Update deployment manifests | sed |
-| **Namespace Setup** | Create application namespace | kubectl |
-| **Config Deployment** | Apply ConfigMaps | kubectl |
-| **App Deployment** | Deploy application pods | kubectl |
-| **Service Creation** | Expose application service | kubectl |
-| **Rollout Monitoring** | Wait for successful deployment | kubectl rollout |
-| **Health Validation** | Test application endpoints | curl |
-| **Security Assessment** | Basic DAST simulation | curl |
-
-## Local Development
+## Steps to Run It in a Repository
 
 ### Prerequisites
 
 - Java 17 or higher
 - Maven 3.6+
 - Docker (optional, for container testing)
+- GitHub repository access (for CI/CD)
 
-### Setup Instructions
+### Quick Start
 
 1. **Clone the repository**
    ```bash
@@ -142,13 +71,6 @@ The CD pipeline deploys to a Minikube Kubernetes cluster:
 
 The application includes comprehensive unit and integration tests:
 
-#### Unit Tests
-- **HelloControllerTest**: Tests the REST controller endpoints using MockMvc
-- **DemoEgovApplicationTests**: Tests application context loading and basic functionality
-
-#### Integration Tests
-- **HelloControllerIntegrationTest**: Full application startup tests with HTTP endpoints
-
 #### Running Tests
 ```bash
 # Run all tests
@@ -159,6 +81,165 @@ The application includes comprehensive unit and integration tests:
 ```
 
 **Current Test Coverage**: 10 tests covering controller logic, application startup, and HTTP endpoints.
+
+## Table of Contents
+
+- [Steps to Run It in a Repository](#steps-to-run-it-in-a-repository)
+- [Secrets Configuration](#secrets-configuration)
+- [CI Explanation](#ci-explanation)
+- [Architecture](#architecture)
+- [Deployment](#deployment)
+- [Security](#security)
+- [Monitoring](#monitoring)
+
+## Secrets Configuration
+
+### GitHub Repository Secrets
+
+Configure the following secrets in your GitHub repository settings (`Settings > Secrets and variables > Actions`):
+
+| Secret Name | Purpose | How to Obtain |
+|-------------|---------|---------------|
+| `DOCKERHUB_USERNAME` | Docker Hub registry username | Your Docker Hub username |
+| `DOCKERHUB_TOKEN` | Docker Hub access token | Generate from Docker Hub Account Settings > Security |
+
+### Setting Up Secrets
+
+1. **Navigate to Repository Settings**
+   - Go to your GitHub repository
+   - Click on "Settings" tab
+   - Select "Secrets and variables" → "Actions"
+
+2. **Add Docker Hub Credentials**
+   - Click "New repository secret"
+   - Add `DOCKERHUB_USERNAME` with your Docker Hub username
+   - Add `DOCKERHUB_TOKEN` with your Docker Hub access token
+
+### Environment Variables
+
+The application supports the following configuration through environment variables:
+
+```yaml
+# Application configuration
+spring:
+  profiles:
+    active: prod
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+```
+
+## CI Explanation
+
+### Application Architecture
+
+```
+Spring Boot Application
+├── REST Controller (/hello)
+├── Actuator Endpoints (/actuator/health, /actuator/info)
+└── Configuration Management
+```
+
+### CI/CD Architecture
+
+```
+GitHub Actions CI/CD Pipeline
+├── CI Pipeline (Ubuntu runners)
+│   ├── Code Quality (Checkstyle)
+│   ├── Security Scanning (SAST, SCA)
+│   ├── Unit Testing
+│   ├── Container Building
+│   └── Image Security Scanning
+└── CD Pipeline (Self-hosted runners)
+    ├── Kubernetes Deployment
+    ├── Service Configuration
+    └── Runtime Validation
+```
+
+### Overview
+
+This project implements a comprehensive CI/CD pipeline that automates the entire software delivery lifecycle from code commit to production deployment. The pipeline is built using GitHub Actions and follows DevSecOps principles with security scanning at every stage.
+
+### Pipeline Architecture
+
+```
+GitHub Actions CI/CD Pipeline
+├── CI Pipeline (Ubuntu runners)
+│   ├── Code Quality (Checkstyle)
+│   ├── Security Scanning (SAST, SCA)
+│   ├── Unit Testing
+│   ├── Container Building
+│   └── Image Security Scanning
+└── CD Pipeline (Self-hosted runners)
+    ├── Kubernetes Deployment
+    ├── Service Configuration
+    └── Runtime Validation
+```
+
+### Continuous Integration Pipeline
+
+The CI pipeline executes the following stages on every code push and pull request:
+
+| Stage | Purpose | Tools | Duration |
+|-------|---------|-------|----------|
+| **Checkout** | Retrieve source code | Git | ~10s |
+| **Setup Runtime** | Install Java 17 and dependencies | Actions/setup-java | ~30s |
+| **Linting** | Enforce coding standards | Maven Checkstyle | ~20s |
+| **SAST** | Detect code-level vulnerabilities | GitHub CodeQL | ~2min |
+| **SCA** | Scan for vulnerable dependencies | Trivy | ~1min |
+| **Unit Tests** | Validate business logic | JUnit | ~45s |
+| **Build** | Package application | Maven | ~1min |
+| **Docker Build** | Create container image | Docker | ~2min |
+| **Image Scan** | Detect OS/library vulnerabilities | Trivy | ~1min |
+| **Runtime Test** | Validate container behavior | Docker + curl | ~30s |
+| **Registry Push** | Publish trusted image | Docker Hub | ~45s |
+
+### Continuous Deployment Pipeline
+
+The CD pipeline deploys to a Minikube Kubernetes cluster using self-hosted runners:
+
+| Stage | Purpose | Tools | Duration |
+|-------|---------|-------|----------|
+| **Environment Check** | Verify K8s cluster status | kubectl, minikube | ~10s |
+| **Image Update** | Update deployment manifests | sed | ~5s |
+| **Namespace Setup** | Create application namespace | kubectl | ~10s |
+| **Config Deployment** | Apply ConfigMaps | kubectl | ~5s |
+| **App Deployment** | Deploy application pods | kubectl | ~30s |
+| **Service Creation** | Expose application service | kubectl | ~10s |
+| **Rollout Monitoring** | Wait for successful deployment | kubectl rollout | ~2min |
+| **Health Validation** | Test application endpoints | curl | ~15s |
+| **Security Assessment** | Basic DAST simulation | curl | ~10s |
+
+### Security Gates
+
+The pipeline includes multiple security checkpoints:
+
+- **Code Quality Gates**: Checkstyle failures block builds
+- **Security Scan Gates**: Critical/high vulnerabilities prevent deployment
+- **Test Coverage Gates**: Minimum test coverage requirements
+- **Container Security**: Image scanning prevents vulnerable deployments
+
+### Trigger Conditions
+
+- **CI Pipeline**: Triggers on push to main branch and all pull requests
+- **CD Pipeline**: Triggers only on successful CI completion and push to main branch
+
+### Self-Hosted Runner Requirements
+
+For the CD pipeline to function, your self-hosted runner must have:
+
+- **kubectl** installed and configured
+- **Minikube** installed and running
+- **Docker** installed (for potential future use)
+- **curl** for testing
+- Access to your Kubernetes cluster
+
 
 ## Deployment
 
@@ -332,36 +413,6 @@ kubectl logs -l app=simple-api -n simple-api
 kubectl logs -f -l app=simple-api -n simple-api
 ```
 
-## Configuration
-
-### GitHub Secrets Required
-
-Configure the following secrets in your GitHub repository:
-
-| Secret Name | Purpose |
-|-------------|---------|
-| `DOCKERHUB_USERNAME` | Docker Hub registry username |
-| `DOCKERHUB_TOKEN` | Docker Hub access token |
-
-### Environment Variables
-
-The application supports the following configuration:
-
-```yaml
-# Application configuration
-spring:
-  profiles:
-    active: prod
-
-server:
-  port: 8080
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-```
 
 ## Troubleshooting
 
